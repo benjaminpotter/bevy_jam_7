@@ -1,5 +1,5 @@
 [package]
-name = "bevy_github_ci_template"
+name = "bevy_jam_7"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0 OR CC0-1.0"
@@ -26,3 +26,4 @@ bevy = "0.18"
 [lints.clippy]
 too_many_arguments = "allow"
 type_complexity = "allow"
+needless_pass_by_value = "allow"
