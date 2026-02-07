@@ -2,16 +2,6 @@ use bevy::asset::AssetMetaCheck;
 use bevy::prelude::*;
 use bevy_enhanced_input::prelude::*;
 
-#[derive(Component)]
-struct Player {
-    speed: f32,
-    velocity: Vec2,
-}
-
-#[derive(InputAction)]
-#[action_output(Vec2)]
-struct Movement;
-
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(AssetPlugin {
@@ -22,44 +12,73 @@ fn main() {
             ..default()
         }))
         .add_plugins(EnhancedInputPlugin)
-        .add_input_context::<Player>()
         .add_systems(Startup, setup)
-        .add_systems(Update, update_player)
-        .add_observer(apply_movement)
         .run();
 }
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
+
+    let status_node = (
+        Node {
+            width: auto(),
+            height: percent(50.),
+            left: percent(10.),
+            margin: UiRect::vertical(auto()),
+            display: Display::Block,
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.9, 0.5, 0.5, 0.5)),
+        children![
+            (Text::new("Turn 10"), TextColor::BLACK),
+            (Text::new("Score 1000"), TextColor::BLACK),
+            (Text::new("Suspicion 100"), TextColor::BLACK),
+        ],
+    );
+
+    let patient_node = (
+        Node {
+            width: auto(),
+            height: percent(50.),
+            right: percent(10.),
+            margin: UiRect::vertical(auto()),
+            display: Display::Block,
+            position_type: PositionType::Absolute,
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.5, 0.9, 0.5, 0.5)),
+        children![
+            (Text::new("Name: Jane Doe"), TextColor::BLACK),
+            (Text::new("Health: 100%"), TextColor::BLACK),
+            (Text::new("Delirium: 1%"), TextColor::BLACK),
+        ],
+    );
+
     commands.spawn((
-        Player {
-            speed: 100.0,
-            velocity: Vec2::ZERO,
+        Node {
+            width: percent(100.),
+            height: percent(100.),
+            ..default()
         },
-        Sprite {
-            image: asset_server.load("ducky.png"),
-            ..Default::default()
-        },
-        Transform::from_xyz(0., 0., 0.),
-        actions!(
-            Player[(
-                Action::<Movement>::new(),
-                Bindings::spawn(Cardinal::wasd_keys(),)
-            )]
-        ),
+        BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.5)),
+        children![
+            (status_node),
+            (patient_node),
+            (
+                // Next turn
+                Node {
+                    width: px(100),
+                    height: px(100),
+                    right: percent(10.),
+                    bottom: percent(10.),
+                    display: Display::Block,
+                    position_type: PositionType::Absolute,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.5, 0.9, 0.5, 0.5)),
+                children![(Text::new("End Turn"), TextColor::BLACK)],
+            )
+        ],
     ));
-}
-
-fn apply_movement(movement: On<Fire<Movement>>, mut player_query: Query<&mut Player>) {
-    if let Ok(mut player) = player_query.get_mut(movement.context) {
-        player.velocity = movement.value * player.speed;
-    }
-}
-
-fn update_player(player_query: Query<(&Player, &mut Transform)>, time: Res<Time>) {
-    for (player, mut transform) in player_query {
-        let movement = player.velocity * time.delta_secs();
-        transform.translation.x += movement.x;
-        transform.translation.y += movement.y;
-    }
 }
