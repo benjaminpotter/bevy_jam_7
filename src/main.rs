@@ -1,8 +1,16 @@
+use bevy::asset::AssetMetaCheck;
+use bevy::input_focus::InputFocus;
+use bevy::prelude::*;
+use bevy_jam_7::patient::PatientData;
 use std::collections::VecDeque;
 
-use bevy::asset::AssetMetaCheck;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq, Hash, States)]
+pub enum GameState {
+    #[default]
+    StartMenu,
+    Treatment,
+    DeckShop,
+}
 
 fn main() {
     App::new()
@@ -13,16 +21,41 @@ fn main() {
             meta_check: AssetMetaCheck::Never,
             ..default()
         }))
+        .init_state::<GameState>()
+        .init_resource::<Config>()
         .init_resource::<Hand>()
+        .init_resource::<PatientList>()
         .add_systems(Startup, setup)
-        .add_systems(Update, (card_follow_mouse, move_cards))
+        .add_systems(Update, fill_patient_list)
+        .add_systems(OnEnter(GameState::StartMenu), setup_start_menu)
+        .add_systems(
+            Update,
+            update_play_button.run_if(in_state(GameState::StartMenu)),
+        )
+        .add_systems(OnExit(GameState::StartMenu), cleanup_start_menu)
+        .add_systems(OnEnter(GameState::Treatment), setup_treatment)
+        .add_systems(
+            Update,
+            (card_follow_mouse, move_cards).run_if(in_state(GameState::Treatment)),
+        )
         .add_observer(on_card_added)
         .add_observer(on_card_removed)
+        .add_systems(OnExit(GameState::Treatment), cleanup_treatment)
         .run();
 }
 
-#[derive(Component)]
-pub struct Card;
+// ------------ RESOURCES -----------------
+
+#[derive(Resource)]
+pub struct Config {
+    max_patients: usize,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { max_patients: 3 }
+    }
+}
 
 #[derive(Resource, Default)]
 pub struct Hand {
@@ -45,14 +78,72 @@ impl Hand {
     }
 }
 
+#[derive(Resource, Default)]
+pub struct PatientList {
+    pub queue: VecDeque<Entity>,
+}
+
+// ------------ COMPONENTS -----------------
+
+#[derive(Component)]
+pub struct Card;
+
 #[derive(Component)]
 pub struct Held;
 
 #[derive(Component)]
 pub struct Patient;
 
+#[derive(Component)]
+pub struct Delete;
+
+// ----------- SETUP ----------------
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn(Camera2d);
+}
+
+fn setup_start_menu(mut commands: Commands) {
+    commands.spawn((
+        Delete,
+        Node {
+            width: percent(100.),
+            height: percent(100.),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            ..default()
+        },
+        children![(
+            Button,
+            Node {
+                width: px(150),
+                height: px(65),
+                border: UiRect::all(px(5)),
+                // horizontally center child text
+                justify_content: JustifyContent::Center,
+                // vertically center child text
+                align_items: AlignItems::Center,
+                border_radius: BorderRadius::MAX,
+                ..default()
+            },
+            BorderColor::all(Color::WHITE),
+            BackgroundColor(Color::BLACK),
+            children![(
+                Text::new("Play"),
+                TextColor(Color::srgb(0.9, 0.9, 0.9)),
+                TextShadow::default(),
+            )]
+        )],
+    ));
+}
+
+fn cleanup_start_menu(mut commands: Commands, delete_query: Query<Entity, With<Delete>>) {
+    for entity in delete_query {
+        commands.entity(entity).despawn();
+    }
+}
+
+fn setup_treatment(mut commands: Commands, asset_server: Res<AssetServer>) {
     commands.spawn((
         Node {
             width: percent(100.),
@@ -82,20 +173,42 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         .observe(hold_card)
         .observe(drop_card)
         .id();
-
-    commands.spawn((
-        Patient,
-        Transform::default(),
-        Visibility::default(),
-        children![(
-            Sprite {
-                image: asset_server.load("sprite/patient.png"),
-                ..default()
-            },
-            Transform::default(),
-        ),],
-    ));
 }
+
+fn cleanup_treatment() {}
+
+// ----------------------- PATIENTS ----------
+
+fn fill_patient_list(
+    mut commands: Commands,
+    mut patient_list: ResMut<PatientList>,
+    config: Res<Config>,
+    asset_server: Res<AssetServer>,
+) {
+    while patient_list.queue.len() < config.max_patients {
+        // TODO: Populate patient data.
+        let _ = PatientData::new();
+
+        let entity = commands
+            .spawn((
+                Patient,
+                Transform::default(),
+                Visibility::Hidden,
+                children![(
+                    Sprite {
+                        image: asset_server.load("sprite/patient.png"),
+                        ..default()
+                    },
+                    Transform::default(),
+                ),],
+            ))
+            .id();
+
+        patient_list.queue.push_back(entity);
+    }
+}
+
+// ----------------------- CARDS -------------
 
 fn on_card_added(add: On<Add, Card>, mut hand: ResMut<Hand>) {
     hand.insert(add.entity);
@@ -160,6 +273,20 @@ fn move_cards(
         transform
             .translation
             .smooth_nudge(&target, 5., time.delta_secs());
+    }
+}
+
+// ------------ BUTTONS ----------
+
+fn update_play_button(
+    mut interaction_query: Query<(&Interaction, &mut Button), Changed<Interaction>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    for (interaction, mut button) in &mut interaction_query {
+        if *interaction == Interaction::Pressed {
+            button.set_changed();
+            next_state.set(GameState::Treatment);
+        }
     }
 }
 
